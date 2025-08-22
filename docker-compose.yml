@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: stratologia
+      POSTGRES_USER: stratou
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stratou -d stratologia"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    build: ../auth-service
+    ports: ["8080:8080"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://db:5432/stratologia
+      KC_DB_USERNAME: stratou
+      KC_DB_PASSWORD: secret
+    depends_on:
+      - db
+
+  api:
+    build: ../api-service
+    environment:
+      DATABASE_URL: postgresql+psycopg://stratou:secret@db:5432/stratologia
+      ALLOW_ORIGINS: http://localhost:5173,http://localhost:5174
+    ports: ["8000:8000"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  citizen-portal:
+    build: ../citizen-portal
+    ports: ["5173:80"]
+    depends_on: [api]
+
+  admin-portal:
+    build: ../admin-portal
+    ports: ["5174:80"]
+    depends_on: [api]
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "8025:8025"  # UI
+      - "1025:1025"  # SMTP
+
+volumes:
+  db_data:
