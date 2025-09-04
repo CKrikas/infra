@@ -28,7 +28,11 @@ services:
     build: ../api-service
     environment:
       DATABASE_URL: postgresql+psycopg://stratou:secret@db:5432/stratologia
-      ALLOW_ORIGINS: http://localhost:5173,http://localhost:5174
+      ALLOW_ORIGINS: '["http://localhost:5173","http://localhost:5174"]'
+      SMTP_HOST: mailhog
+      SMTP_PORT: "1025"
+      SMTP_FROM: noreply@stratologia.local
+
     ports: ["8000:8000"]
     depends_on:
       db:
