@@ -12,9 +12,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
   keycloak:
-    build: ../auth-service
+    image: ghcr.io/ckrikas/auth-service:latest
     ports: ["8080:8080"]
     environment:
       KC_DB: postgres
@@ -23,36 +24,42 @@ services:
       KC_DB_PASSWORD: secret
     depends_on:
       - db
+    restart: unless-stopped
 
   api:
-    build: ../api-service
+    image: ghcr.io/ckrikas/api-service:latest
     environment:
       DATABASE_URL: postgresql+psycopg://stratou:secret@db:5432/stratologia
-      ALLOW_ORIGINS: '["http://localhost:5173","http://localhost:5174"]'
+      ALLOW_ORIGINS: '["http://20.90.162.52:5173","http://20.90.162.52:5174"]'
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: noreply@stratologia.local
-
+      KEYCLOAK_URL: http://keycloak:8080/auth
+      KEYCLOAK_REALM: stratologia
     ports: ["8000:8000"]
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
 
   citizen-portal:
-    build: ../citizen-portal
+    image: ghcr.io/ckrikas/citizen-portal:latest
     ports: ["5173:80"]
     depends_on: [api]
+    restart: unless-stopped
 
   admin-portal:
-    build: ../admin-portal
+    image: ghcr.io/ckrikas/admin-portal:latest
     ports: ["5174:80"]
     depends_on: [api]
+    restart: unless-stopped
 
   mailhog:
     image: mailhog/mailhog:latest
     ports:
-      - "8025:8025"  # UI
-      - "1025:1025"  # SMTP
+      - "8025:8025"
+      - "1025:1025"
+    restart: unless-stopped
 
 volumes:
   db_data:
