@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   db:
     image: postgres:16
@@ -16,12 +18,17 @@ services:
 
   keycloak:
     image: ghcr.io/ckrikas/auth-service:latest
-    ports: ["8080:8080"]
     environment:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://db:5432/stratologia
       KC_DB_USERNAME: stratou
       KC_DB_PASSWORD: secret
+      # behind reverse proxy (Caddy) on HTTPS:
+      KC_PROXY: edge
+      KC_HOSTNAME: auth-ckrikas.duckdns.org
+      # your image already starts with --http-relative-path=/auth
+      # if you ever need it here:
+      # KC_HTTP_RELATIVE_PATH: /auth
     depends_on:
       - db
     restart: unless-stopped
@@ -30,13 +37,12 @@ services:
     image: ghcr.io/ckrikas/api-service:latest
     environment:
       DATABASE_URL: postgresql+psycopg://stratou:secret@db:5432/stratologia
-      ALLOW_ORIGINS: '["http://20.90.162.52:5173","http://20.90.162.52:5174"]'
+      ALLOW_ORIGINS: '["https://citizen-ckrikas.duckdns.org","https://admin-ckrikas.duckdns.org"]'
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: noreply@stratologia.local
-      KEYCLOAK_URL: http://keycloak:8080/auth
-      KEYCLOAK_REALM: stratologia
-    ports: ["8000:8000"]
+      KEYCLOAK_URL: "https://auth-ckrikas.duckdns.org/auth"
+      KEYCLOAK_REALM: "stratologia"
     depends_on:
       db:
         condition: service_healthy
@@ -44,22 +50,37 @@ services:
 
   citizen-portal:
     image: ghcr.io/ckrikas/citizen-portal:latest
-    ports: ["5173:80"]
     depends_on: [api]
     restart: unless-stopped
 
   admin-portal:
     image: ghcr.io/ckrikas/admin-portal:latest
-    ports: ["5174:80"]
     depends_on: [api]
     restart: unless-stopped
 
   mailhog:
     image: mailhog/mailhog:latest
+    # SMTP stays internal (api -> mailhog:1025)
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
     ports:
-      - "8025:8025"
-      - "1025:1025"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - keycloak
+      - citizen-portal
+      - admin-portal
+      - mailhog
     restart: unless-stopped
 
 volumes:
   db_data:
+  caddy_data:
+  caddy_config:
