@@ -1,0 +1,119 @@
+- hosts: prod
+  become: true
+  vars:
+    app_dir: /opt/stratologia/infra
+    infra_repo: "https://github.com/ckrikas/infra.git"
+    infra_ref: "main"
+    deploy_user: "{{ ansible_user }}"
+
+  tasks:
+    - name: Ensure base utilities
+      ansible.builtin.package:
+        name:
+          - git
+          - curl
+          - ca-certificates
+        state: present
+      ignore_errors: yes
+
+    - name: Check docker existence
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Install Docker Engine (script) if docker missing
+      ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
+      args:
+        executable: /bin/bash
+      when: docker_check.rc != 0
+      register: docker_install
+      notify: Restart docker
+
+    - name: Ensure docker service enabled and started
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Determine arch for docker compose binary
+      ansible.builtin.set_fact:
+        compose_arch: >-
+          {% if ansible_architecture in ['x86_64','amd64'] %}x86_64
+          {% elif ansible_architecture in ['aarch64','arm64'] %}aarch64
+          {% else %}x86_64
+          {% endif %}
+        compose_version: "v2.29.7"
+
+    - name: Check if docker compose is available
+      ansible.builtin.command: docker compose version
+      register: compose_check
+      changed_when: false
+      failed_when: false
+
+    - name: Ensure CLI plugins dir exists (for docker compose)
+      ansible.builtin.file:
+        path: /usr/local/lib/docker/cli-plugins
+        state: directory
+        mode: "0755"
+      when: compose_check.rc != 0
+
+    - name: Install docker compose CLI plugin (static)
+      ansible.builtin.get_url:
+        url: "https://github.com/docker/compose/releases/download/{{ compose_version }}/docker-compose-linux-{{ compose_arch }}"
+        dest: /usr/local/lib/docker/cli-plugins/docker-compose
+        mode: "0755"
+      when: compose_check.rc != 0
+
+    - name: Ensure {{ deploy_user }} is in docker group
+      ansible.builtin.user:
+        name: "{{ deploy_user }}"
+        groups: docker
+        append: true
+
+    - name: Create app directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ deploy_user }}"
+        group: "{{ deploy_user }}"
+        mode: "0755"
+
+    - name: Clone/update infra repo on target
+      become: false
+      become_user: "{{ deploy_user }}"
+      ansible.builtin.git:
+        repo: "{{ infra_repo }}"
+        dest: "{{ app_dir }}"
+        version: "{{ infra_ref }}"
+        force: yes
+
+    - name: Verify docker compose availability
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: compose_ver
+      changed_when: false
+      failed_when: compose_ver.rc != 0
+
+    - name: Docker login to GHCR (CLI)
+      ansible.builtin.command:
+        cmd: docker login ghcr.io -u ckrikas --password-stdin
+        chdir: "{{ app_dir }}"
+        stdin: "{{ ghcr_token }}"
+      no_log: true
+
+    - name: Pull images (compose)
+      ansible.builtin.command:
+        cmd: docker compose pull
+        chdir: "{{ app_dir }}"
+
+    - name: Up the stack (compose)
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: "{{ app_dir }}"
+
+  handlers:
+    - name: Restart docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
