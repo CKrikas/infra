@@ -23,12 +23,8 @@ services:
       KC_DB_URL: jdbc:postgresql://db:5432/stratologia
       KC_DB_USERNAME: stratou
       KC_DB_PASSWORD: secret
-      # behind reverse proxy (Caddy) on HTTPS:
       KC_PROXY: edge
       KC_HOSTNAME: auth-ckrikas.duckdns.org
-      # your image already starts with --http-relative-path=/auth
-      # if you ever need it here:
-      # KC_HTTP_RELATIVE_PATH: /auth
     depends_on:
       - db
     restart: unless-stopped
@@ -37,7 +33,7 @@ services:
     image: ghcr.io/ckrikas/api-service:latest
     environment:
       DATABASE_URL: postgresql+psycopg://stratou:secret@db:5432/stratologia
-      ALLOW_ORIGINS: '["https://citizen-ckrikas.duckdns.org","https://admin-ckrikas.duckdns.org"]'
+      ALLOW_ORIGINS_RAW: '["https://citizen-ckrikas.duckdns.org","https://admin-ckrikas.duckdns.org"]'
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: noreply@stratologia.local
@@ -60,7 +56,6 @@ services:
 
   mailhog:
     image: mailhog/mailhog:latest
-    # SMTP stays internal (api -> mailhog:1025)
     restart: unless-stopped
 
   caddy:
