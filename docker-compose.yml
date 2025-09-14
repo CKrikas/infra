@@ -18,13 +18,9 @@ services:
 
   keycloak:
     image: ghcr.io/ckrikas/auth-service:latest
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://db:5432/stratologia
-      KC_DB_USERNAME: stratou
-      KC_DB_PASSWORD: secret
-      KC_PROXY: edge
-      KC_HOSTNAME: auth-ckrikas.duckdns.org
+    # your image starts-dev with --http-relative-path=/auth and imports the realm
+    # no hostname/proxy needed now
+    ports: ["8080:8080"]
     depends_on:
       - db
     restart: unless-stopped
@@ -33,12 +29,15 @@ services:
     image: ghcr.io/ckrikas/api-service:latest
     environment:
       DATABASE_URL: postgresql+psycopg://stratou:secret@db:5432/stratologia
-      ALLOW_ORIGINS_RAW: '["https://citizen-ckrikas.duckdns.org","https://admin-ckrikas.duckdns.org"]'
+      # CORS: ONLY allow your two SPA origins (IP+ports)
+      ALLOW_ORIGINS_RAW: '["http://20.90.162.52:5173","http://20.90.162.52:5174"]'
       SMTP_HOST: mailhog
       SMTP_PORT: "1025"
       SMTP_FROM: noreply@stratologia.local
-      KEYCLOAK_URL: "https://auth-ckrikas.duckdns.org/auth"
+      # internal Keycloak URL (container-to-container)
+      KEYCLOAK_URL: "http://keycloak:8080/auth"
       KEYCLOAK_REALM: "stratologia"
+    ports: ["8000:8000"]
     depends_on:
       db:
         condition: service_healthy
@@ -46,36 +45,28 @@ services:
 
   citizen-portal:
     image: ghcr.io/ckrikas/citizen-portal:latest
+    ports: ["5173:80"]
     depends_on: [api]
     restart: unless-stopped
 
   admin-portal:
     image: ghcr.io/ckrikas/admin-portal:latest
+    ports: ["5174:80"]
     depends_on: [api]
     restart: unless-stopped
 
   mailhog:
     image: mailhog/mailhog:latest
+    ports:
+      - "8025:8025"   # UI
+      # 1025 exposed only if you really want external SMTP testing
+      # - "1025:1025"
     restart: unless-stopped
 
-  caddy:
-    image: caddy:2
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-      - keycloak
-      - citizen-portal
-      - admin-portal
-      - mailhog
-    restart: unless-stopped
+  # REMOVE or comment out Caddy
+  # caddy:
+  #   image: caddy:2
+  #   ...
 
 volumes:
   db_data:
-  caddy_data:
-  caddy_config:
