@@ -18,12 +18,14 @@ services:
 
   keycloak:
     image: ghcr.io/ckrikas/auth-service:latest
-    # your image starts-dev with --http-relative-path=/auth and imports the realm
-    # no hostname/proxy needed now
     ports: ["8080:8080"]
+    environment:
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
     depends_on:
       - db
     restart: unless-stopped
+
 
   api:
     image: ghcr.io/ckrikas/api-service:latest
